@@ -39,7 +39,9 @@ export async function connectToDatabase() {
     if (isDevelopment) {
       console.error(`[database] MongoDB connection failed: ${sanitizeConnectionError(error, MONGODB_URI)}`);
     } else {
-      console.error('[database] MongoDB connection failed. Check MONGODB_URI and database availability.');
-    }
+  console.error(
+    `[database] MongoDB connection failed: ${sanitizeConnectionError(error, MONGODB_URI)}`
+  );
+}
   }
 }
