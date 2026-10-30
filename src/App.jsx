@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import ConnectionStatus from './components/ConnectionStatus.jsx';
 import { analyzeImage } from './lib/api.js';
+import { detectAIImage } from './services/aiDetection';
 
 const plannedModules = [
   {
@@ -88,6 +89,8 @@ function App() {
   const [analysisReport, setAnalysisReport] = useState(null);
   const [elaResult, setElaResult] = useState(null);
   const [analysisError, setAnalysisError] = useState('');
+  const [aiDetectionResult, setAiDetectionResult] = useState(null);
+  const [aiDetectionError, setAiDetectionError] = useState('');
   const [message, setMessage] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -166,29 +169,46 @@ function App() {
   }
 
   async function runAnalysis() {
-    if (!selectedFile || previewStatus !== 'ready' || analysisStatus === 'loading') return;
+  if (!selectedFile || previewStatus !== 'ready' || analysisStatus === 'loading') return;
 
-    const requestId = analysisRequestRef.current + 1;
-    analysisRequestRef.current = requestId;
-    setAnalysisStatus('loading');
-    setAnalysisReport(null);
-    setElaResult(null);
-    setAnalysisError('');
+  const requestId = analysisRequestRef.current + 1;
+  analysisRequestRef.current = requestId;
 
-    try {
-      const result = await analyzeImage(selectedFile);
-      if (requestId !== analysisRequestRef.current) return;
-      setAnalysisReport(result.report);
-      setElaResult(result.ela || null);
-      setAnalysisStatus('success');
-    } catch (error) {
-      if (requestId !== analysisRequestRef.current) return;
-      setAnalysisError(error.message || 'The basic-forensics request failed. Please try again.');
-      setAnalysisStatus('error');
-    }
+  setAnalysisStatus('loading');
+  setAnalysisReport(null);
+  setElaResult(null);
+  setAnalysisError('');
+  setAiDetectionResult(null);
+  setAiDetectionError('');
+
+  const [basicResult, aiResult] = await Promise.allSettled([
+    analyzeImage(selectedFile),
+    detectAIImage(selectedFile),
+  ]);
+
+  if (requestId !== analysisRequestRef.current) return;
+
+  if (basicResult.status === 'fulfilled') {
+    setAnalysisReport(basicResult.value.report);
+    setElaResult(basicResult.value.ela || null);
+    setAnalysisStatus('success');
+  } else {
+    setAnalysisError(
+      basicResult.reason?.message || 'Basic forensic analysis failed.'
+    );
+    setAnalysisStatus('error');
   }
 
-  function clearSelection() {
+  if (aiResult.status === 'fulfilled') {
+    setAiDetectionResult(aiResult.value);
+  } else {
+    setAiDetectionError(
+      aiResult.reason?.message || 'AI detection could not be completed.'
+    );
+  }
+}
+
+    function clearSelection() {
     analysisRequestRef.current += 1;
     setSelectedFile(null);
     setPreviewDimensions(null);
@@ -247,9 +267,9 @@ function App() {
           </div>
           <div className="prototype-note">
             <span className="status-dot" />
-            <span>BASIC FORENSICS PROTOTYPE</span>
-            <span className="note-divider" />
-            <span className="note-muted">No AI detection or authenticity verdict</span>
+            <span>IMAGE FORENSICS + AI RESEARCH</span>
+<span className="note-divider" />
+<span className="note-muted">Experimental AI detection · no guaranteed verdict</span>
           </div>
         </div>
         <div className="hero-visual enter-up" aria-label="Illustrative image preview">
@@ -312,7 +332,7 @@ function App() {
             <div className="eyebrow"><span className="eyebrow-line" /> LOCAL PREVIEW</div>
             <h2 id="workspace-title">Bring an image<br /><span>into focus.</span></h2>
           </div>
-          <p>Preview and file details are prepared locally. Selecting Analyze Media sends the image to the backend for basic format and metadata checks only.</p>
+          <p>Image previews and experimental AI classification run in your browser. Basic forensic checks, including file validation, metadata indicators and ELA, are performed by the backend.</p>
         </div>
 
         <div
@@ -370,7 +390,16 @@ function App() {
                 <h3 title={selectedFile.name}>{selectedFile.name}</h3>
                 <p>{formatFileSize(selectedFile.size)} <span>·</span> {supportedFormats[getSupportedMimeType(selectedFile)]}</p>
                 <div className="preview-status" aria-live="polite">
-                  {previewStatus === 'ready' ? <><Check size={14} /> Preview only; not analyzed</> :
+                  {previewStatus === 'ready' ? (
+  <>
+    <Check size={14} />
+    {analysisStatus === 'success'
+      ? 'Preview and analysis complete'
+      : analysisStatus === 'loading'
+        ? 'Analysis in progress'
+        : 'Preview ready; analysis not yet run'}
+  </>
+) :
                     previewStatus === 'error' ? 'Try another image format.' : 'Preparing image locally…'}
                 </div>
               </div>
@@ -409,7 +438,7 @@ function App() {
               analysisStatus === 'success' ? <>Run checks again <ScanSearch size={15} /></> :
                 <>Analyze Media <ScanSearch size={15} /></>}
           </button>
-          <span>Basic forensic checks only · no AI or authenticity verdict</span>
+          <span>Basic forensic analysis + experimental AI image classification</span>
         </div>
         {analysisError && <p className="analysis-error" role="alert">{analysisError}</p>}
 
@@ -440,7 +469,7 @@ function App() {
                   </dd>
                 </div>
               </dl>
-              <p className="report-disclaimer">These are local file details only. No authenticity checks or manipulation analysis have been performed.</p>
+              <p className="report-disclaimer">These are local file details. Run analysis to view experimental AI classification and backend forensic indicators. Neither can prove authenticity or manipulation.</p>
             </>
           ) : (
             <div className="report-empty" role="status">
@@ -451,10 +480,36 @@ function App() {
                   ? 'Reading basic image dimensions in this browser. No analysis is running.'
                   : previewStatus === 'error'
                     ? 'The file could not be decoded as an image. Choose a different JPG, PNG, or WebP file.'
-                    : 'Choose an image to see its local file details, then run basic format and metadata checks. AI detection is not available.'}</p>
+                    : 'Choose an image to see its local file details, then run basic forensic analysis and experimental AI classification.'}</p>
               </div>
             </div>
           )}
+          {(aiDetectionResult || aiDetectionError) && (
+  <section className="ai-detection-result">
+    <h4>AI-Generated Image Detection</h4>
+
+    {aiDetectionResult && (
+      <>
+        <p>
+          <strong>Model result:</strong> {aiDetectionResult.label}
+        </p>
+        <p>
+          <strong>Fake score:</strong>{' '}
+          {(aiDetectionResult.fakeScore * 100).toFixed(2)}%
+        </p>
+        <p>
+          <strong>Real score:</strong>{' '}
+          {(aiDetectionResult.realScore * 100).toFixed(2)}%
+        </p>
+        <p>{aiDetectionResult.disclaimer}</p>
+      </>
+    )}
+
+    {aiDetectionError && (
+      <p role="alert">{aiDetectionError}</p>
+    )}
+  </section>
+)}
           {analysisReport && (
             <div className="server-report">
               <div className="server-report-heading">
@@ -524,11 +579,11 @@ function App() {
                   </div>
                 ))}
               </div>
-              <p className="report-disclaimer">Basic format and metadata indicators only. Passing these checks does not prove authenticity; metadata absence does not prove manipulation. No AI detection or authenticity verdict was produced.</p>
+              <p className="report-disclaimer">This server report contains basic forensic indicators only. Experimental AI classification is displayed separately above. Neither result proves authenticity or manipulation.</p>
             </div>
           )}
         </section>
-        <p className="privacy-line"><Shield size={14} /> Preview stays local. Analyze Media sends the image to the backend for basic checks.</p>
+       <p className="privacy-line"><Shield size={14} /> AI classification runs in your browser. The selected image is also sent to the backend for basic forensic analysis.</p>
       </section>
 
       <footer className="footer page-shell">
